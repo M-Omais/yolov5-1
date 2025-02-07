@@ -19,6 +19,7 @@ import pandas as pd
 import requests
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from PIL import Image
 from torch.cuda import amp
 
@@ -68,8 +69,55 @@ def autopad(k, p=None, d=1):
     if p is None:
         p = k // 2 if isinstance(k, int) else [x // 2 for x in k]  # auto-pad
     return p
+def binarize(tensor):
+    """Binarizes the input tensor (weights or activations).
+    Returns -1 for negative and 0 values, and 1 for positive values.
+    """
+    return torch.where(tensor > 0, torch.tensor(1.0), torch.tensor(-1.0))
 
+def compute_alpha(weight):
+    """Compute scaling factor (alpha) for binarized weights."""
+    return torch.mean(torch.abs(weight), dim=[1, 2, 3], keepdim=True)
 
+class ConvF(nn.Module):
+    """Applies a convolution, batch normalization, and activation function to an input tensor in a neural network."""
+
+    default_act = nn.SiLU()  # default activation
+
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True):
+        """Initializes a standard convolution layer with optional batch normalization and activation."""
+        super().__init__()
+        self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
+        self.bn = nn.BatchNorm2d(c2)
+        self.act = nn.ReLU()
+
+    def forward(self, x):
+        """Applies a convolution followed by batch normalization and an activation function to the input tensor `x`."""
+        return self.act(self.bn(self.conv(x)))
+
+    def forward_fuse(self, x):
+        """Applies a fused convolution and activation function to the input tensor `x`."""
+        return self.act(self.conv(x))
+class ConvF1(nn.Module):
+    """Applies a convolution, batch normalization, and activation function to an input tensor in a neural network."""
+
+    default_act = nn.SiLU()  # default activation
+
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True):
+        """Initializes a standard convolution layer with optional batch normalization and activation."""
+        super().__init__()
+        self.conv = nn.Conv2d(1, c2, k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
+        self.bn = nn.BatchNorm2d(c2)
+        self.act = nn.ReLU()
+
+    def forward(self, x):
+        """Applies a convolution followed by batch normalization and an activation function to the input tensor `x`."""
+        return self.act(self.bn(self.conv(x)))
+
+    def forward_fuse(self, x):
+        """Applies a fused convolution and activation function to the input tensor `x`."""
+        return self.act(self.conv(x))
+    
 class Conv(nn.Module):
     """Applies a convolution, batch normalization, and activation function to an input tensor in a neural network."""
 
@@ -80,16 +128,68 @@ class Conv(nn.Module):
         super().__init__()
         self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
         self.bn = nn.BatchNorm2d(c2)
-        self.act = self.default_act if act is True else act if isinstance(act, nn.Module) else nn.Identity()
+        self.act = nn.ReLU()
 
     def forward(self, x):
-        """Applies a convolution followed by batch normalization and an activation function to the input tensor `x`."""
-        return self.act(self.bn(self.conv(x)))
+        """Forward pass of the XNOR-Net convolution: Applies BN, activation, then binarized convolution."""
+               
+        # Binarize weights
+        real_weights = self.conv.weight
+        alpha = compute_alpha(real_weights)  # Compute scaling factor alpha
+        binarized_weights = binarize(real_weights)  # Binarize the weights
+
+        # Match precision for all tensors
+        dtype = x.dtype  # Ensure consistency with input precision
+
+        # Create average weight tensor on the same device as x
+        kernel_size = self.conv.kernel_size[0]  # Assuming square kernel
+        average_weight = (torch.ones([1, self.conv.in_channels, kernel_size, kernel_size], 
+                                    dtype=dtype, device=x.device) / (kernel_size * kernel_size * self.conv.in_channels))
+
+        # Binarize activations
+        K = F.conv2d(torch.abs(x), average_weight, padding=self.conv.padding, stride=self.conv.stride, 
+                    dilation=self.conv.dilation, groups=self.conv.groups)
+        binarized_input = binarize(x)  # Binarize the input activations
+
+        # Perform convolution with binarized weights and activations
+        output = F.conv2d(binarized_input.to(dtype), binarized_weights.to(dtype), None, self.conv.stride,
+                        self.conv.padding, self.conv.dilation, self.conv.groups)
+
+        # Apply scaling factors
+        alpha = alpha.to(dtype).view(1, -1, 1, 1)  # Reshape alpha for broadcasting [1, C, 1, 1]
+        output = output * K * alpha
+        output = self.bn(output)
+        return output
 
     def forward_fuse(self, x):
-        """Applies a fused convolution and activation function to the input tensor `x`."""
-        return self.act(self.conv(x))
+        """Forward pass of the XNOR-Net convolution: Applies BN, activation, then binarized convolution."""
+               
+        # Binarize weights
+        real_weights = self.conv.weight
+        alpha = compute_alpha(real_weights)  # Compute scaling factor alpha
+        binarized_weights = binarize(real_weights)  # Binarize the weights
 
+        # Match precision for all tensors
+        dtype = x.dtype  # Ensure consistency with input precision
+
+        # Create average weight tensor on the same device as x
+        kernel_size = self.conv.kernel_size[0]  # Assuming square kernel
+        average_weight = (torch.ones([1, self.conv.in_channels, kernel_size, kernel_size], 
+                                    dtype=dtype, device=x.device) / (kernel_size * kernel_size * self.conv.in_channels))
+
+        # Binarize activations
+        K = F.conv2d(torch.abs(x), average_weight, padding=self.conv.padding, stride=self.conv.stride, 
+                    dilation=self.conv.dilation, groups=self.conv.groups)
+        binarized_input = binarize(x)  # Binarize the input activations
+
+        # Perform convolution with binarized weights and activations
+        output = F.conv2d(binarized_input.to(dtype), binarized_weights.to(dtype), None, self.conv.stride,
+                        self.conv.padding, self.conv.dilation, self.conv.groups)
+
+        # Apply scaling factors
+        alpha = alpha.to(dtype).view(1, -1, 1, 1)  # Reshape alpha for broadcasting [1, C, 1, 1]
+        output = output * K * alpha
+        return output
 
 class DWConv(Conv):
     """Implements a depth-wise convolution layer with optional activation for efficient spatial filtering."""
@@ -326,8 +426,8 @@ class SPPF(nn.Module):
         """
         super().__init__()
         c_ = c1 // 2  # hidden channels
-        self.cv1 = Conv(c1, c_, 1, 1)
-        self.cv2 = Conv(c_ * 4, c2, 1, 1)
+        self.cv1 = ConvF(c1, c_, 1, 1)
+        self.cv2 = ConvF(c_ * 4, c2, 1, 1)
         self.m = nn.MaxPool2d(kernel_size=k, stride=1, padding=k // 2)
 
     def forward(self, x):

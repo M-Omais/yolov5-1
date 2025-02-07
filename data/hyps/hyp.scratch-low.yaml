@@ -1,35 +1,42 @@
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
-# Hyperparameters for low-augmentation COCO training from scratch
-# python train.py --batch 64 --cfg yolov5n6.yaml --weights '' --data coco.yaml --img 640 --epochs 300 --linear
-# See tutorials for hyperparameter evolution https://github.com/ultralytics/yolov5#tutorials
+# Updated Hyperparameters
+lr0: 0.002 # lower initial learning rate for stability
+lrf: 0.01 # final OneCycleLR learning rate
+momentum: 0.95 # higher momentum for better optimization
+weight_decay: 0.0001 # reduced weight decay to prevent over-regularization
+warmup_epochs: 2.0 # shorter warmup period for quicker adaptation
+warmup_momentum: 0.9 # higher initial momentum during warmup
+warmup_bias_lr: 0.05 # reduced warmup bias learning rate
 
-lr0: 0.01 # initial learning rate (SGD=1E-2, Adam=1E-3)
-lrf: 0.01 # final OneCycleLR learning rate (lr0 * lrf)
-momentum: 0.937 # SGD momentum/Adam beta1
-weight_decay: 0.0005 # optimizer weight decay 5e-4
-warmup_epochs: 3.0 # warmup epochs (fractions ok)
-warmup_momentum: 0.8 # warmup initial momentum
-warmup_bias_lr: 0.1 # warmup initial bias lr
-box: 0.05 # box loss gain
-cls: 0.5 # cls loss gain
-cls_pw: 1.0 # cls BCELoss positive_weight
-obj: 1.0 # obj loss gain (scale with pixels)
-obj_pw: 1.0 # obj BCELoss positive_weight
-iou_t: 0.20 # IoU training threshold
-anchor_t: 4.0 # anchor-multiple threshold
-# anchors: 3  # anchors per output layer (0 to ignore)
-fl_gamma: 0.0 # focal loss gamma (efficientDet default gamma=1.5)
-hsv_h: 0.015 # image HSV-Hue augmentation (fraction)
-hsv_s: 0.7 # image HSV-Saturation augmentation (fraction)
-hsv_v: 0.4 # image HSV-Value augmentation (fraction)
-degrees: 0.0 # image rotation (+/- deg)
-translate: 0.1 # image translation (+/- fraction)
-scale: 0.5 # image scale (+/- gain)
-shear: 0.0 # image shear (+/- deg)
-perspective: 0.0 # image perspective (+/- fraction), range 0-0.001
-flipud: 0.0 # image flip up-down (probability)
-fliplr: 0.5 # image flip left-right (probability)
-mosaic: 1.0 # image mosaic (probability)
-mixup: 0.0 # image mixup (probability)
-copy_paste: 0.0 # segment copy-paste (probability)
+# Loss gains
+box: 0.1 # increased box loss gain for better localization
+cls: 0.6 # slightly increased classification loss gain
+cls_pw: 1.2 # increased positive weight for classification
+obj: 1.5 # increased objectness loss gain for better object detection
+obj_pw: 1.2 # increased positive weight for objectness
+
+# IoU and anchors
+iou_t: 0.25 # higher IoU threshold for more strict training
+anchor_t: 3.5 # reduced anchor threshold to improve anchor matching
+
+# Focal loss
+fl_gamma: 1.5 # enabling focal loss for better handling of class imbalance
+
+# Augmentations
+hsv_h: 0.02 # slightly increased HSV-Hue augmentation
+hsv_s: 0.8 # increased HSV-Saturation augmentation
+hsv_v: 0.5 # increased HSV-Value augmentation
+degrees: 5.0 # added slight rotation
+translate: 0.2 # increased image translation
+scale: 0.7 # increased image scaling
+shear: 2.0 # added image shearing
+perspective: 0.0005 # slight perspective distortion
+flipud: 0.1 # enabled up-down flipping
+fliplr: 0.5 # kept left-right flipping
+
+# Advanced augmentations
+mosaic: 1.0 # mosaic augmentation (unchanged)
+mixup: 0.2 # enabled mixup for stronger augmentation
+copy_paste: 0.1 # enabled copy-paste for segmentation datasets
+

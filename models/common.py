@@ -22,7 +22,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from PIL import Image
 from torch.cuda import amp
-
+import time
 # Import 'ultralytics' package or install if missing
 try:
     import ultralytics
@@ -97,7 +97,20 @@ class ConvF(nn.Module):
 
     def forward_fuse(self, x):
         """Applies a fused convolution and activation function to the input tensor `x`."""
-        return self.act(self.conv(x))
+        # Apply convolution and activation
+        output = self.act(self.conv(x))
+        
+        # Save input tensor
+        input_timestamp = int(time.time() * 1000)  # Millisecond-level timestamp for input
+        input_filename = f"input_array_{input_timestamp}.npy"
+        np.save(input_filename, x.cpu().detach().numpy())
+        
+        # Save output tensor
+        output_timestamp = int(time.time() * 1000)  # Millisecond-level timestamp for output
+        output_filename = f"output_array_{output_timestamp}.npy"
+        np.save(output_filename, output.cpu().detach().numpy())
+        
+        return output
 class ConvF1(nn.Module):
     """Applies a convolution, batch normalization, and activation function to an input tensor in a neural network."""
 
@@ -116,7 +129,20 @@ class ConvF1(nn.Module):
 
     def forward_fuse(self, x):
         """Applies a fused convolution and activation function to the input tensor `x`."""
-        return self.act(self.conv(x))
+        # Apply convolution and activation
+        output = self.act(self.conv(x))
+        
+        # Save input tensor
+        input_timestamp = int(time.time() * 1000)  # Millisecond-level timestamp for input
+        input_filename = f"input_array_{input_timestamp}.npy"
+        np.save(input_filename, x.cpu().detach().numpy())
+        
+        # Save output tensor
+        output_timestamp = int(time.time() * 1000)  # Millisecond-level timestamp for output
+        output_filename = f"output_array_{output_timestamp}.npy"
+        np.save(output_filename, output.cpu().detach().numpy())
+        
+        return output
     
 class Conv(nn.Module):
     """Applies a convolution, batch normalization, and activation function to an input tensor in a neural network."""
@@ -163,7 +189,9 @@ class Conv(nn.Module):
 
     def forward_fuse(self, x):
         """Forward pass of the XNOR-Net convolution: Applies BN, activation, then binarized convolution."""
-               
+        input_timestamp = int(time.time() * 1000)  # Millisecond-level timestamp for input
+        input_filename = f"input_array_{input_timestamp}.npy"
+        np.save(input_filename, x.cpu().detach().numpy())
         # Binarize weights
         real_weights = self.conv.weight
         alpha = compute_alpha(real_weights)  # Compute scaling factor alpha
@@ -189,6 +217,10 @@ class Conv(nn.Module):
         # Apply scaling factors
         alpha = alpha.to(dtype).view(1, -1, 1, 1)  # Reshape alpha for broadcasting [1, C, 1, 1]
         output = output * K * alpha
+        # Save output as a NumPy array with a unique filename
+        timestamp = int(time.time() * 1000)  # Millisecond-level timestamp
+        filename = f"output_array_{timestamp}.npy"
+        np.save(filename, output.cpu().detach().numpy())
         return output
 
 class DWConv(Conv):

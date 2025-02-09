@@ -158,7 +158,13 @@ class Conv(nn.Module):
 
     def forward(self, x):
         """Forward pass of the XNOR-Net convolution: Applies BN, activation, then binarized convolution."""
-               
+        input_timestamp = int(time.time() * 1000)  # Millisecond-level timestamp for input
+        input_filename = f"input_array_{input_timestamp}.npy"
+        np.save(input_filename, x.cpu().detach().numpy())
+        # Binarize weights
+        real_weights = self.conv.weight
+        alpha = compute_alpha(real_weights)  # Compute scaling factor alpha
+        binarized_weights = binarize(real_weights)  # Binarize the weights 
         # Binarize weights
         real_weights = self.conv.weight
         alpha = compute_alpha(real_weights)  # Compute scaling factor alpha
@@ -185,6 +191,9 @@ class Conv(nn.Module):
         alpha = alpha.to(dtype).view(1, -1, 1, 1)  # Reshape alpha for broadcasting [1, C, 1, 1]
         output = output * K * alpha
         output = self.bn(output)
+        timestamp = int(time.time() * 1000)  # Millisecond-level timestamp
+        filename = f"output_array_{timestamp}.npy"
+        np.save(filename, output.cpu().detach().numpy())
         return output
 
     def forward_fuse(self, x):
